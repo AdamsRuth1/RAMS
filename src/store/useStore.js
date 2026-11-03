@@ -83,14 +83,17 @@ const defaultUsers = [
   },
 ];
 
+// Name of whoever is logged in (safe if nobody is)
+const currentName = (get) => get().user?.name || 'Unknown';
+
 // ─── Store ─────────────────────────────────────────────────────────────────────
 export const useStore = create(
   persist(
     (set, get) => ({
       // Auth & Users
       users: defaultUsers,
-      user: defaultUsers[0],
-      isAuthenticated: false,
+      user: null,               // nobody logged in at start
+      isAuthenticated: false,   // always starts logged out
 
       login: (username, password) => {
         const cleanUser = (username || '').trim().toLowerCase();
@@ -125,7 +128,7 @@ export const useStore = create(
         return { success: true, user: found };
       },
 
-      logout: () => set({ isAuthenticated: false }),
+      logout: () => set({ isAuthenticated: false, user: null }),
 
       addUser: ({ username, password, name, role = 'Signals Officer', armyNo = '', unit = '55 Sig Bde' }) => {
         const cleanUser = (username || '').trim();
@@ -218,7 +221,7 @@ export const useStore = create(
           photo: photo,
           timestamp: new Date().toISOString(),
           condition: null,
-          processedBy: get().user.name,
+          processedBy: currentName(get),
           notes: 'New soldier registered',
         };
         set((s) => ({
@@ -293,8 +296,8 @@ export const useStore = create(
           const newId = 'S' + String(allSoldiers.length + 1).padStart(3, '0');
           soldierObj = {
             id: newId,
-            name: name.trim(),
-            armyNo: armyNo.trim(),
+            name: (name || '').trim(),
+            armyNo: (armyNo || '').trim(),
             rank,
             unit,
             phone,
@@ -315,7 +318,7 @@ export const useStore = create(
 
         const qty = Math.max(1, Number(quantity) || (serialsList.length > 0 ? serialsList.length : 1));
 
-        // If fewer serials provided than quantity, fill up with placeholders or single entry
+        // If no serials provided, fall back to a single generated serial
         if (serialsList.length === 0) {
           const nextCount = get().radios.length + 1;
           serialsList = [`RAD-${String(nextCount).padStart(3, '0')}`];
@@ -369,7 +372,7 @@ export const useStore = create(
           photo: soldierActualPhoto,
           timestamp: now,
           condition: condition || 'Serviceable',
-          processedBy: get().user.name,
+          processedBy: currentName(get),
           notes: notes || `Issued ${qty} radio(s)`,
         };
 
@@ -437,7 +440,7 @@ export const useStore = create(
           photo: resolvedPhoto,
           timestamp: now,
           condition: condition || 'Serviceable',
-          processedBy: get().user.name,
+          processedBy: currentName(get),
           notes: notes || '',
         };
 
@@ -471,7 +474,7 @@ export const useStore = create(
           photo: resolvedPhoto,
           timestamp: now,
           condition: condition || 'Serviceable',
-          processedBy: get().user.name,
+          processedBy: currentName(get),
           notes: notes || '',
         };
 
@@ -489,24 +492,30 @@ export const useStore = create(
     }),
     {
       name: 'rams-storage',
-      onRehydrateStorage: () => (state) => {
-        if (state) {
-          const { fixedSoldiers, fixedTransactions } = ensurePhotos(state.soldiers, state.transactions);
-          state.soldiers = fixedSoldiers;
-          state.transactions = fixedTransactions;
-          if (!state.users || state.users.length === 0) {
-            state.users = defaultUsers;
-          }
-        }
-      },
+
+      // Only save DATA. Never save login state.
       partialize: (state) => ({
         users: state.users,
         soldiers: state.soldiers,
         radios: state.radios,
         transactions: state.transactions,
-        isAuthenticated: state.isAuthenticated,
-        user: state.user,
       }),
+
+      // Runs on every page load. Forces logged-out state, even if an old
+      // saved copy in localStorage still contains isAuthenticated: true.
+      merge: (persisted, current) => {
+        const saved = persisted || {};
+        const { fixedSoldiers, fixedTransactions } = ensurePhotos(saved.soldiers, saved.transactions);
+        return {
+          ...current,
+          ...saved,
+          soldiers: fixedSoldiers,
+          transactions: fixedTransactions,
+          users: saved.users && saved.users.length > 0 ? saved.users : defaultUsers,
+          isAuthenticated: false,
+          user: null,
+        };
+      },
     }
   )
 );
