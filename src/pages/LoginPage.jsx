@@ -27,13 +27,13 @@ export default function LoginPage() {
       return;
     }
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 800));
-    const ok = login(username, password);
+    await new Promise((r) => setTimeout(r, 500));
+    const result = login(username, password);
     setLoading(false);
-    if (ok) {
+    if (result && result.success) {
       navigate('/dashboard');
     } else {
-      setError('Invalid credentials. Please try again.');
+      setError(result?.error || 'Invalid credentials. Access denied.');
     }
   };
 
@@ -210,10 +210,23 @@ export default function LoginPage() {
               </button>
             </form>
 
-            {/* Demo hint */}
-            <p className="text-center text-gray-600 text-xs mt-6">
-              Demo: enter any username &amp; password
-            </p>
+            {/* System credentials reference */}
+            <div className="mt-6 p-3 bg-[#0a180c] border border-green-900/60 rounded-xl text-xs space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-400 font-semibold">Default Login:</span>
+                <button
+                  type="button"
+                  onClick={() => { setUsername('admin'); setPassword('password123'); }}
+                  className="text-army-light text-[11px] hover:underline"
+                >
+                  Auto-fill Admin
+                </button>
+              </div>
+
+              <p className="text-[10px] text-gray-500 pt-0.5">
+                Authorized access only. Add more operators in Settings → User Management.
+              </p>
+            </div>
 
             {/* Footer branding */}
             <div className="flex items-center justify-center gap-3 mt-6 pt-4 border-t border-green-900/30">

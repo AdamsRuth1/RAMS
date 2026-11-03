@@ -57,21 +57,147 @@ function ensurePhotos(soldiers, transactions) {
   return { fixedSoldiers, fixedTransactions };
 }
 
+// ─── Default System Users ─────────────────────────────────────────────────────
+const defaultUsers = [
+  {
+    id: 'U001',
+    username: 'admin',
+    password: 'password123',
+    name: '2LT RO Adams',
+    role: 'Admin',
+    armyNo: '2LT/RO/001',
+    unit: '55 Sig Bde',
+    status: 'Active',
+    dateCreated: '2026-10-01T08:00:00',
+  },
+  {
+    id: 'U002',
+    username: 'officer',
+    password: 'password123',
+    name: 'LT Tunde Adebayo',
+    role: 'Signals Officer',
+    armyNo: 'NA/22/4012',
+    unit: '55 Sig Bde',
+    status: 'Active',
+    dateCreated: '2026-10-05T08:00:00',
+  },
+];
+
 // ─── Store ─────────────────────────────────────────────────────────────────────
 export const useStore = create(
   persist(
     (set, get) => ({
-      // Auth
-      user: { name: '2LT RO Adams', role: 'Admin', armyNo: '2LT/RO/001' },
+      // Auth & Users
+      users: defaultUsers,
+      user: defaultUsers[0],
       isAuthenticated: false,
+
       login: (username, password) => {
-        if (username && password) {
-          set({ isAuthenticated: true });
-          return true;
+        const cleanUser = (username || '').trim().toLowerCase();
+        const cleanPass = (password || '').trim();
+
+        const currentUsers = get().users && get().users.length > 0 ? get().users : defaultUsers;
+        const found = currentUsers.find(
+          (u) =>
+            (u.username.toLowerCase() === cleanUser || (u.armyNo && u.armyNo.toLowerCase() === cleanUser)) &&
+            u.password === cleanPass
+        );
+
+        if (!found) {
+          return { success: false, error: 'Invalid username or password. Access denied.' };
         }
-        return false;
+
+        if (found.status === 'Inactive') {
+          return { success: false, error: 'This user account is inactive. Please contact an Administrator.' };
+        }
+
+        set({
+          isAuthenticated: true,
+          user: {
+            id: found.id,
+            username: found.username,
+            name: found.name,
+            role: found.role,
+            armyNo: found.armyNo,
+            unit: found.unit || '55 Sig Bde',
+          },
+        });
+        return { success: true, user: found };
       },
+
       logout: () => set({ isAuthenticated: false }),
+
+      addUser: ({ username, password, name, role = 'Signals Officer', armyNo = '', unit = '55 Sig Bde' }) => {
+        const cleanUser = (username || '').trim();
+        const cleanPass = (password || '').trim();
+        const cleanName = (name || '').trim();
+
+        if (!cleanUser || !cleanPass || !cleanName) {
+          return { success: false, error: 'Username, password, and full name are required.' };
+        }
+
+        const existing = get().users || [];
+        if (existing.some((u) => u.username.toLowerCase() === cleanUser.toLowerCase())) {
+          return { success: false, error: `Username "${cleanUser}" is already taken.` };
+        }
+
+        const newId = 'U' + String(existing.length + 1).padStart(3, '0');
+        const newUser = {
+          id: newId,
+          username: cleanUser,
+          password: cleanPass,
+          name: cleanName,
+          role,
+          armyNo: armyNo.trim(),
+          unit: unit.trim(),
+          status: 'Active',
+          dateCreated: new Date().toISOString(),
+        };
+
+        set({ users: [...existing, newUser] });
+        return { success: true, user: newUser };
+      },
+
+      updateUser: (id, updates) => {
+        const currentUsers = get().users || [];
+        const updated = currentUsers.map((u) => (u.id === id ? { ...u, ...updates } : u));
+        const currentUser = get().user;
+
+        set({
+          users: updated,
+          user: currentUser?.id === id ? { ...currentUser, ...updates } : currentUser,
+        });
+        return { success: true };
+      },
+
+      deleteUser: (id) => {
+        const currentUser = get().user;
+        if (currentUser?.id === id) {
+          return { success: false, error: 'You cannot delete your own logged-in account.' };
+        }
+        set((s) => ({ users: s.users.filter((u) => u.id !== id) }));
+        return { success: true };
+      },
+
+      changePassword: (userId, currentPassword, newPassword) => {
+        const currentUsers = get().users || [];
+        const user = currentUsers.find((u) => u.id === userId);
+        if (!user) {
+          return { success: false, error: 'User account not found.' };
+        }
+        if (user.password !== currentPassword.trim()) {
+          return { success: false, error: 'Current password is incorrect.' };
+        }
+        if (!newPassword || newPassword.trim().length < 4) {
+          return { success: false, error: 'New password must be at least 4 characters.' };
+        }
+
+        const updated = currentUsers.map((u) =>
+          u.id === userId ? { ...u, password: newPassword.trim() } : u
+        );
+        set({ users: updated });
+        return { success: true };
+      },
 
       // Soldiers
       soldiers: seedSoldiers,
@@ -368,9 +494,13 @@ export const useStore = create(
           const { fixedSoldiers, fixedTransactions } = ensurePhotos(state.soldiers, state.transactions);
           state.soldiers = fixedSoldiers;
           state.transactions = fixedTransactions;
+          if (!state.users || state.users.length === 0) {
+            state.users = defaultUsers;
+          }
         }
       },
       partialize: (state) => ({
+        users: state.users,
         soldiers: state.soldiers,
         radios: state.radios,
         transactions: state.transactions,
